@@ -75,23 +75,61 @@ class DogecoinRPC {
 }
 //require 'DogecoinRPC.php';
 
-$rpc = new DogecoinRPC('dogeuser', 'dogepass');
+// index.php
+//require_once 'DogecoinRPC.php';
 
-// 1. Check balance
-$balance = $rpc->getBalance();
-echo "Balance: $balance DOGE\n";
+// Set headers for JSON API
+header('Content-Type: application/json');
 
-// 2. Validate an address
-$address = "D9fZfDcuXqM49hJGqf7gSXRZdFsQ5sUvuD";
-$valid = $rpc->validateAddress($address);
-echo "Is Valid: " . ($valid['isvalid'] ? 'Yes' : 'No') . "\n";
+// RPC connection settings (change as needed)
+$rpc = new DogecoinRPC('dogeuser', 'dogepass', '127.0.0.1', 22555);
 
-// 3. List UTXOs
-$utxos = $rpc->listUnspent(1, 9999999, [$address]);
-print_r($utxos);
+// Parse the route from GET or POST
+$action = $_GET['action'] ?? $_POST['action'] ?? null;
 
-// 4. Send raw transaction (example only - replace with real hex)
-//$rawHex = "0100000001abcdef...";
-//$sendResult = $rpc->sendRawTransaction($rawHex);
-print_r($sendResult);
+switch ($action) {
+    case 'getbalance':
+        $account = $_GET['account'] ?? '*';
+        $result = $rpc->getBalance($account);
+        echo json_encode(['balance' => $result]);
+        break;
+
+    case 'validateaddress':
+        $address = $_GET['address'] ?? '';
+        if (!$address) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Missing address']);
+            break;
+        }
+        $result = $rpc->validateAddress($address);
+        echo json_encode($result);
+        break;
+
+    case 'listunspent':
+        $address = $_GET['address'] ?? '';
+        if (!$address) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Missing address']);
+            break;
+        }
+        $result = $rpc->listUnspent(1, 9999999, [$address]);
+        echo json_encode($result);
+        break;
+
+    case 'sendrawtransaction':
+        $hex = $_POST['hex'] ?? '';
+        if (!$hex) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Missing raw transaction hex']);
+            break;
+        }
+        $result = $rpc->sendRawTransaction($hex);
+        echo json_encode(['txid' => $result]);
+        break;
+
+    default:
+        http_response_code(404);
+        echo json_encode(['error' => 'Unknown or missing action']);
+}
+
 ?>
