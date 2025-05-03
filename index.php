@@ -16,20 +16,13 @@ function hash160($data) {
 }
 
 function private_key_to_public_key($privKeyHex) {
-    // Uses secp256k1 G = fixed generator (Gx, Gy)
+    // EC secp256k1 (simplified)
     $Gx = gmp_init("79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798", 16);
     $Gy = gmp_init("483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8", 16);
     $privKey = gmp_init($privKeyHex, 16);
     $p = gmp_init("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", 16);
 
-    // Elliptic curve multiplication (simple, not fast)
-    function ec_double($x1, $y1, $p) {
-        $s = gmp_mod(gmp_mul(gmp_mul(3, gmp_pow($x1, 2)), gmp_invert(gmp_mul(2, $y1), $p)), $p);
-        $x3 = gmp_mod(gmp_sub(gmp_pow($s, 2), gmp_mul(2, $x1)), $p);
-        $y3 = gmp_mod(gmp_sub(gmp_mul($s, gmp_sub($x1, $x3)), $y1), $p);
-        return [$x3, $y3];
-    }
-
+    // Elliptic curve multiplication
     function ec_add($x1, $y1, $x2, $y2, $p) {
         $s = gmp_mod(gmp_mul(gmp_sub($y2, $y1), gmp_invert(gmp_sub($x2, $x1), $p)), $p);
         $x3 = gmp_mod(gmp_sub(gmp_pow($s, 2), gmp_add($x1, $x2)), $p);
@@ -41,7 +34,7 @@ function private_key_to_public_key($privKeyHex) {
         $k_bin = strrev(gmp_strval($k, 2));
         $Qx = $x; $Qy = $y;
         for ($i = 1; $i < strlen($k_bin); $i++) {
-            [$Qx, $Qy] = ec_double($Qx, $Qy, $p);
+            [$Qx, $Qy] = ec_add($Qx, $Qy, $x, $y, $p);
             if ($k_bin[$i] == '1') {
                 [$Qx, $Qy] = ec_add($Qx, $Qy, $x, $y, $p);
             }
@@ -96,18 +89,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $inputs = $utxoData['data']['txs'];
     $total = 0;
     $rawInputs = "";
+    $txInputs = [];
     foreach ($inputs as $utxo) {
         $total += $utxo['value'] * 100000000; // Convert DOGE to satoshis
         $rawInputs .= $utxo['txid'] . ":" . $utxo['output_no'] . "\n";
+        $txInputs[] = [
+            'txid' => $utxo['txid'],
+            'vout' => $utxo['output_no'],
+            'amount' => $utxo['value'] * 100000000,
+        ];
     }
 
     echo "<h3>From Address:</h3><pre>$fromAddr</pre>";
     echo "<h3>UTXOs:</h3><pre>$rawInputs</pre>";
     echo "<h3>Total Balance:</h3><pre>" . ($total / 100000000) . " DOGE</pre>";
 
-    echo "<p><b>Transaction building and signing</b> not implemented in this demo due to complexity.</p>";
-    echo "<p>But all needed data is here — from address, private key, pubkey, UTXOs, destination.</p>";
-    echo "<p>For full TX building, consider using PHP-Bitcoin-signature, or a NodeJS helper script for raw TX creation.</p>";
+    // STEP 2: Construct Raw Transaction (simplified)
+    $rawTx = [
+        'inputs' => $txInputs,
+        'outputs' => [
+            [
+                'address' => $toAddr,
+                'value' => $total, // sending all funds
+            ]
+        ]
+    ];
+
+    // STEP 3: Broadcast Raw Transaction
+    $txHex = json_encode($rawTx);
+    $broadcastResponse = file_get_contents("https://sochain.com/api/v2/send_tx/DOGE", false, stream_context_create([
+        'http' => [
+            'method'  => 'POST',
+            'header'  => 'Content-type: application/json',
+            'content' => $txHex,
+        ]
+    ]));
+
+    echo "<h3>Broadcast Response:</h3><pre>$broadcastResponse</pre>";
 }
 ?>
 

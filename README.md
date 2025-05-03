@@ -1,2 +1,2 @@
 # dogecoin-sweeper
-php sweeper for dogecoin
+php sweeper for dogecoin WIP
